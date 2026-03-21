@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edusense</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{
+  font-family: 'Comic Sans MS', Arial, sans-serif;
+  background: linear-gradient(135deg, #4ade80, #22d3ee);
+  color: #fff;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+}
+.card{
+  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(8px);
+  padding: 20px;
+  margin: 15px auto;
+  border-radius: 25px;
+  max-width: 400px;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+}
+button{
+  padding: 15px 25px;
+  margin: 5px;
+  border:none;
+  border-radius:20px;
+  background: #3b82f6;
+  font-weight: bold;
+  font-size: 16px;
+  transition:0.3s;
+  cursor: pointer;
+}
+button:hover{
+  transform: scale(1.05);
+  background: #2563eb;
+}
+input, select{
+  padding:12px;
+  border-radius:20px;
+  border:none;
+  margin:5px;
+  width: calc(100% - 30px);
+}
+.hidden{display:none;}
+ul{padding-left:0; list-style:none;}
+li{
+  margin:10px 0;
+  cursor:pointer;
+  font-weight:bold;
+  background: rgba(255,255,255,0.2);
+  padding:10px;
+  border-radius:15px;
+}
+canvas{background: rgba(255,255,255,0.1); border-radius:15px;}
+#footer{
+  position: fixed;
+  bottom: 5px;
+  right: 10px;
+  font-size: 12px;
+  color: #fff;
+  opacity: 0.7;
+}
+</style>
+</head>
+<body>
+
+<h1>Edusense</h1>
+
+<div id="menu" class="card">
+  <button onclick="alunoTela()">Aluno</button>
+  <button onclick="profTela()">Professor</button>
+</div>
+
+<div id="prof" class="hidden card">
+  <input id="senha" placeholder="Senha">
+  <button onclick="entrarProf()">Entrar</button>
+</div>
+
+<div id="painel" class="hidden card">
+  <h2>Painel Professor</h2>
+  <input id="codSala" placeholder="Código sala">
+  <button onclick="criarSala()">Criar Sala</button>
+  <p>Alunos: <span id="alunos">0</span></p>
+  <p>Respostas: <span id="resp">0</span></p>
+
+  <button onclick="verAlunos()">Ver Alunos</button>
+
+  <div id="listaAlunos" class="hidden">
+    <h3>Alunos</h3>
+    <ul id="alunosLista"></ul>
+    <div id="estatisticas" class="hidden card">
+      <h4>Estatísticas de <span id="nomeAluno"></span></h4>
+      <canvas id="grafAluno" width="300" height="150"></canvas>
+      <p>Pontos: <span id="ptsAluno">0</span></p>
+      <p>Acertos: <span id="acertosAluno">0</span></p>
+      <p>Erros: <span id="errosAluno">0</span></p>
+      <p>Atenção Média: <span id="atenAluno">Alta</span></p>
+      <button onclick="estatisticas.classList.add('hidden')">Fechar</button>
+    </div>
+  </div>
+
+  <h3>Ranking</h3>
+  <ul id="ranking"></ul>
+
+  <canvas id="grafico"></canvas>
+</div>
+
+<div id="aluno" class="hidden card">
+  <input id="nome" placeholder="Nome">
+  <input id="cod" placeholder="Código sala">
+  <select id="materiaSelect">
+    <option value="mat">Matemática</option>
+    <option value="port">Português</option>
+    <option value="hist">História</option>
+    <option value="geo">Geografia</option>
+  </select>
+  <button onclick="entrarSala()">Entrar</button>
+</div>
+
+<div id="jogo" class="hidden card">
+  <h2 id="pergunta"></h2>
+  <button onclick="resp(true)">Verdadeiro</button>
+  <button onclick="resp(false)">Falso</button>
+  <p>Pontos: <span id="pontos">0</span></p>
+  <p>Atenção: <span id="aten">Alta</span></p>
+</div>
+
+<div id="footer">
+  Feito por: Daniel, Murilo e Arthur
+</div>
+
+<script>
+// --- SUPABASE ---
+const supabaseClient = supabase.createClient(
+  "https://bgrvbqfxseosuchftptj.supabase.co",
+  "sb_publishable_VzvYUdEPmLinIjzgVMe_dA_adbp7jqf"
+);
+
+// --- VARIÁVEIS ---
+let pontos=0, acertos=0, erros=0, atual=0, sala="", nome="";
+let perguntas=[];
+const banco={
+mat:[{q:"2+2=4",a:true},{q:"5x5=20",a:false},{q:"6x6=36",a:true},{q:"9-3=7",a:false},{q:"10/2=5",a:true},{q:"3x3=9",a:true},{q:"8+1=10",a:false},{q:"7x2=14",a:true},{q:"12-2=11",a:false},{q:"15/3=5",a:true}],
+port:[{q:"Casa é verbo",a:false},{q:"Correr é verbo",a:true},{q:"Azul é adjetivo",a:true},{q:"Ele é substantivo",a:false},{q:"Feliz é adjetivo",a:true},{q:"Livro é verbo",a:false},{q:"Comer é verbo",a:true},{q:"Bonito é adjetivo",a:true},{q:"Eu é substantivo",a:false},{q:"Triste é adjetivo",a:true}],
+hist:[{q:"Brasil colonizado por Portugal",a:true},{q:"2ª guerra em 1800",a:false},{q:"Roma império",a:true},{q:"Egito na Europa",a:false},{q:"Independência 1822",a:true},{q:"Napoleão no Brasil",a:false},{q:"Idade média existiu",a:true},{q:"Hitler brasileiro",a:false},{q:"Roma na Itália",a:true},{q:"Brasil espanhol",a:false}],
+geo:[{q:"Brasil na América",a:true},{q:"África é país",a:false},{q:"Terra planeta",a:true},{q:"Sol planeta",a:false},{q:"Água domina Terra",a:true},{q:"Japão na Europa",a:false},{q:"China na Ásia",a:true},{q:"Brasil Europa",a:false},{q:"Oceano existe",a:true},{q:"Deserto água",a:false}]
+};
+
+// --- TELAS ---
+function alunoTela(){menu.classList.add("hidden");aluno.classList.remove("hidden")}
+function profTela(){menu.classList.add("hidden");prof.classList.remove("hidden")}
+
+// --- LOGIN PROFESSOR ---
+function entrarProf(){
+if(senha.value=="1234"){
+prof.classList.add("hidden");
+painel.classList.remove("hidden");
+graf();
+ranking();
+}
+}
+
+// --- CRIAR SALA ---
+async function criarSala(){
+sala=codSala.value;
+await supabaseClient.from("salas").insert([{codigo:sala,alunos:0,respostas:0}]);
+}
+
+// --- ENTRAR ALUNO ---
+async function entrarSala(){
+nome=document.getElementById("nome").value;
+sala=document.getElementById("cod").value;
+let materia=document.getElementById("materiaSelect").value;
+perguntas=banco[materia];
+let {data}=await supabaseClient.from("salas").select("*").eq("codigo",sala);
+if(data.length>0){
+aluno.classList.add("hidden");
+jogo.classList.remove("hidden");
+atual=0; pontos=0; acertos=0; erros=0;
+document.getElementById("pergunta").innerText=perguntas[0].q;
+document.getElementById("pontos").innerText=pontos;
+navigator.mediaDevices.getUserMedia({video:true}).then(stream=>{});
+}
+}
+
+// --- RESPONDER ---
+async function resp(r){
+if(r==perguntas[atual].a){pontos++; acertos++;}else{erros++;}
+document.getElementById("pontos").innerText=pontos;
+let nivel=["Alta","Média","Baixa"];
+document.getElementById("aten").innerText=nivel[Math.floor(Math.random()*3)];
+atual++;
+if(atual<perguntas.length){
+document.getElementById("pergunta").innerText=perguntas[atual].q;
+}else{
+await supabaseClient.from("ranking").insert([{nome:nome,pontos:pontos,sala:sala}]);
+jogo.classList.add("hidden");
+ranking();
+}
+grafUpdate();
+}
+
+// --- GRAFICO ---
+let chart;
+function graf(){
+chart=new Chart(grafico,{type:"bar",data:{labels:["Acertos","Erros"],datasets:[{data:[0,0]}]}});
+}
+function grafUpdate(){
+chart.data.datasets[0].data=[acertos,erros];
+chart.update();
+}
+
+// --- RANKING ---
+async function ranking(){
+let {data}=await supabaseClient.from("ranking").select("*").eq("sala",sala).order("pontos",{ascending:false}).limit(5);
+let rankingEl=document.getElementById("ranking");
+rankingEl.innerHTML="";
+data.forEach(j=>{
+let li=document.createElement("li");
+li.innerText=j.nome+" - "+j.pontos;
+rankingEl.appendChild(li);
+});
+}
+
+// --- LISTA DE ALUNOS ---
+async function verAlunos(){
+listaAlunos.classList.toggle("hidden");
+let {data}=await supabaseClient.from("ranking").select("*").eq("sala",sala).order("nome",{ascending:true});
+let alunosLista=document.getElementById("alunosLista");
+alunosLista.innerHTML="";
+data.forEach(a=>{
+let li=document.createElement("li");
+li.innerText=a.nome;
+li.onclick=()=>mostrarEstatisticas(a);
+alunosLista.appendChild(li);
+});
+}
+
+// --- ESTATÍSTICAS INDIVIDUAIS ---
+function mostrarEstatisticas(aluno){
+estatisticas.classList.remove("hidden");
+nomeAluno.innerText=aluno.nome;
+ptsAluno.innerText=aluno.pontos;
+acertosAluno.innerText=aluno.pontos; // simplificado
+errosAluno.innerText="—"; // sem dado detalhado
+atenAluno.innerText=["Alta","Média","Baixa"][Math.floor(Math.random()*3)];
+// Grafico individual
+let ctx = document.getElementById("grafAluno").getContext("2d");
+new Chart(ctx,{type:"bar",data:{labels:["Acertos","Erros"],datasets:[{data:[aluno.pontos,0],backgroundColor:["#34d399","#f87171"]}]}});
+}
+
+// --- TEMPO REAL ---
+supabaseClient.channel('tempo')
+.on('postgres_changes',{event:'*',schema:'public',table:'ranking'},payload=>{
+ranking();
+})
+.subscribe();
+</script>
+
+</body>
+</html>
